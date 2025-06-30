@@ -1,0 +1,6 @@
+Prompt: hello, how are you doing today
+
+Response from Google Gemini:
+Timestamp: 2025-06-30 12:43:32
+
+I'm doing well, thank you! I don't have feelings, but I'm ready and available to help you with whatever you need. How can I assist you today?

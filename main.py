@@ -22,31 +22,31 @@ from typing import Optional, Dict, Any
 # Add src directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# Available services and their modules
-AVAILABLE_SERVICES = {
+# Available image generation services and their modules
+IMAGE_SERVICES = {
     "mock": {
-        "module": "mock_automation",
+        "module": "mock_image_alteration",
         "function": "mock_image_automation",
         "description": "Mock automation using PIL transformations (always works)",
         "requires_input": True,
         "generates_new": True
     },
     "bing": {
-        "module": "bing_automation", 
+        "module": "bing_image_alteration", 
         "function": "bing_image_automation",
         "description": "Bing Image Creator automation",
         "requires_input": False,
         "generates_new": True
     },
     "craiyon": {
-        "module": "craiyon_automation",
+        "module": "craiyon_image_alteration",
         "function": "craiyon_image_automation", 
         "description": "Craiyon (DALL-E mini) automation",
         "requires_input": False,
         "generates_new": True
     },
     "deepai": {
-        "module": "deepai_automation",
+        "module": "deepai_image_alteration",
         "function": "deepai_retry_automation",
         "description": "DeepAI Text-to-Image automation (confirmed working)",
         "requires_input": False,
@@ -54,17 +54,51 @@ AVAILABLE_SERVICES = {
     }
 }
 
+# Available chat completion services and their modules
+CHAT_SERVICES = {
+    "openai": {
+        "module": "openai_chat_completion",
+        "function": "openai_chat_automation",
+        "description": "OpenAI ChatGPT web interface automation",
+        "requires_input": False,
+        "generates_text": True
+    },
+    "claude": {
+        "module": "claude_chat_completion",
+        "function": "claude_chat_automation",
+        "description": "Anthropic Claude web interface automation",
+        "requires_input": False,
+        "generates_text": True
+    },
+    "gemini": {
+        "module": "gemini_chat_completion",
+        "function": "gemini_chat_automation",
+        "description": "Google Gemini web interface automation",
+        "requires_input": False,
+        "generates_text": True
+    },
+    "perplexity": {
+        "module": "perplexity_chat_completion",
+        "function": "perplexity_chat_automation",
+        "description": "Perplexity AI web interface automation",
+        "requires_input": False,
+        "generates_text": True
+    }
+}
+
 DEFAULT_INPUT = "./data/input/dogs-playing-poker-original.jpg"
 DEFAULT_OUTPUT_DIR = "./data/output/"
 DEFAULT_PROMPT = "anthropomorphize these animals"
 DEFAULT_SERVICE = "deepai"
+DEFAULT_MODE = "image"
 
-class ImageGenerationRunner:
-    """Main runner class for image generation automation"""
+class AutomationRunner:
+    """Main runner class for both image generation and text completion automation"""
     
-    def __init__(self, service: str, input_file: Optional[str] = None, 
+    def __init__(self, service: str, mode: str = DEFAULT_MODE, input_file: Optional[str] = None, 
                  output_dir: str = DEFAULT_OUTPUT_DIR, prompt: Optional[str] = None):
         self.service = service
+        self.mode = mode
         self.input_file = Path(input_file) if input_file else None
         self.output_dir = Path(output_dir)
         self.prompt = prompt or DEFAULT_PROMPT
@@ -75,23 +109,27 @@ class ImageGenerationRunner:
         
     def validate_service(self) -> bool:
         """Validate that the requested service is available"""
-        if self.service not in AVAILABLE_SERVICES:
-            logging.error(f"Service '{self.service}' not available.")
-            logging.info(f"Available services: {', '.join(AVAILABLE_SERVICES.keys())}")
+        available_services = IMAGE_SERVICES if self.mode == "image" else CHAT_SERVICES
+        
+        if self.service not in available_services:
+            logging.error(f"Service '{self.service}' not available for {self.mode} mode.")
+            logging.info(f"Available {self.mode} services: {', '.join(available_services.keys())}")
             return False
         return True
     
     def validate_input(self) -> bool:
         """Validate input file if required"""
-        service_info = AVAILABLE_SERVICES[self.service]
+        available_services = IMAGE_SERVICES if self.mode == "image" else CHAT_SERVICES
+        service_info = available_services[self.service]
         
-        if service_info["requires_input"]:
+        if self.mode == "image" and service_info.get("requires_input", False):
             if not self.input_file or not self.input_file.exists():
                 logging.error(f"Service '{self.service}' requires input file: {self.input_file}")
                 return False
             logging.info(f"Input file validated: {self.input_file}")
         else:
-            logging.info(f"Service '{self.service}' generates images from prompt only")
+            mode_type = "images" if self.mode == "image" else "text responses"
+            logging.info(f"Service '{self.service}' generates {mode_type} from prompt only")
         
         return True
     
@@ -107,10 +145,11 @@ class ImageGenerationRunner:
     
     async def run_service(self) -> bool:
         """Run the selected service automation"""
-        service_info = AVAILABLE_SERVICES[self.service]
+        available_services = IMAGE_SERVICES if self.mode == "image" else CHAT_SERVICES
+        service_info = available_services[self.service]
         
         try:
-            logging.info(f"Starting {self.service} automation")
+            logging.info(f"Starting {self.service} {self.mode} automation")
             logging.info(f"Service: {service_info['description']}")
             
             if self.input_file:
@@ -119,6 +158,7 @@ class ImageGenerationRunner:
             logging.info(f"Prompt: {self.prompt}")
             
             self.log_session("automation_start", {
+                "mode": self.mode,
                 "input_file": str(self.input_file) if self.input_file else None,
                 "output_dir": str(self.output_dir),
                 "prompt": self.prompt
@@ -135,14 +175,14 @@ class ImageGenerationRunner:
             # Execute the automation
             start_time = time.time()
             
-            if self.service == "mock":
+            if self.mode == "image" and self.service == "mock":
                 # Mock service needs input file and output dir
                 success = await automation_function(
                     input_file=str(self.input_file) if self.input_file else None,
                     output_dir=str(self.output_dir)
                 )
             else:
-                # Other services need output dir and prompt
+                # All other services need output dir and prompt
                 success = await automation_function(
                     output_dir=str(self.output_dir),
                     prompt=self.prompt
@@ -151,7 +191,7 @@ class ImageGenerationRunner:
             execution_time = time.time() - start_time
             
             if success:
-                logging.info(f"{self.service} automation completed successfully")
+                logging.info(f"{self.service} {self.mode} automation completed successfully")
                 logging.info(f"Execution time: {execution_time:.2f} seconds")
                 
                 self.log_session("automation_success", {
@@ -161,7 +201,7 @@ class ImageGenerationRunner:
                 
                 return True
             else:
-                logging.error(f"{self.service} automation failed")
+                logging.error(f"{self.service} {self.mode} automation failed")
                 self.log_session("automation_failed", {
                     "execution_time": execution_time
                 })
@@ -178,8 +218,12 @@ class ImageGenerationRunner:
     def _find_output_files(self) -> list:
         """Find output files in the output directory"""
         output_files = []
-        for pattern in ["*.jpg", "*.png", "*.jpeg"]:
-            output_files.extend(list(self.output_dir.glob(pattern)))
+        if self.mode == "image":
+            for pattern in ["*.jpg", "*.png", "*.jpeg"]:
+                output_files.extend(list(self.output_dir.glob(pattern)))
+        else:  # text mode
+            for pattern in ["*.txt"]:
+                output_files.extend(list(self.output_dir.glob(pattern)))
         return [str(f) for f in output_files]
     
     def save_session_log(self):
@@ -193,21 +237,33 @@ class ImageGenerationRunner:
 
 def list_services():
     """List all available services"""
-    logging.info("Available AI Image Generation Services:")
+    logging.info("Available AI Automation Services:")
     logging.info("=" * 60)
     
-    for service_id, info in AVAILABLE_SERVICES.items():
+    logging.info("\nIMAGE GENERATION SERVICES:")
+    for service_id, info in IMAGE_SERVICES.items():
         status = "WORKING" if service_id in ["mock", "deepai"] else "PARTIAL"
-        input_req = "Input Required" if info["requires_input"] else "Prompt Only"
+        input_req = "Input Required" if info.get("requires_input", False) else "Prompt Only"
         
-        logging.info(f"{service_id.upper()}")
-        logging.info(f"   Status: {status}")
-        logging.info(f"   Type: {input_req}")
-        logging.info(f"   Description: {info['description']}")
+        logging.info(f"  {service_id.upper()}")
+        logging.info(f"     Status: {status}")
+        logging.info(f"     Type: {input_req}")
+        logging.info(f"     Description: {info['description']}")
     
-    logging.info("Example usage:")
-    logging.info("   python main.py --service deepai --prompt 'A robot in space'")
-    logging.info("   python main.py --service mock --input ./data/input/sample-original.jpg")
+    logging.info("\nTEXT COMPLETION SERVICES:")
+    for service_id, info in CHAT_SERVICES.items():
+        logging.info(f"  {service_id.upper()}")
+        logging.info(f"     Status: EXPERIMENTAL")
+        logging.info(f"     Type: Prompt Only")
+        logging.info(f"     Description: {info['description']}")
+    
+    logging.info("\nExample usage:")
+    logging.info("   # Image generation")
+    logging.info("   python main.py --mode image --service deepai --prompt 'A robot in space'")
+    logging.info("   python main.py --mode image --service mock --input ./data/input/sample.jpg")
+    logging.info("   # Text completion")
+    logging.info("   python main.py --mode text --service openai --prompt 'Explain AI'")
+    logging.info("   python main.py --mode text --service claude --prompt 'What is machine learning?'")
 
 def main():
     """Main entry point"""
@@ -230,9 +286,15 @@ Examples:
     )
     
     parser.add_argument(
+        "--mode", "-m",
+        default=DEFAULT_MODE,
+        choices=["image", "text"],
+        help=f"Automation mode: image generation or text completion (default: {DEFAULT_MODE})"
+    )
+    
+    parser.add_argument(
         "--service", "-s",
         default=DEFAULT_SERVICE,
-        choices=list(AVAILABLE_SERVICES.keys()),
         help=f"AI service to use (default: {DEFAULT_SERVICE})"
     )
     
@@ -267,8 +329,9 @@ Examples:
         return
     
     # Create and run automation
-    runner = ImageGenerationRunner(
+    runner = AutomationRunner(
         service=args.service,
+        mode=args.mode,
         input_file=args.input if args.input != DEFAULT_INPUT or Path(args.input).exists() else None,
         output_dir=args.output,
         prompt=args.prompt
@@ -284,10 +347,12 @@ Examples:
         runner.save_session_log()
         
         if success:
-            logging.info("Image generation completed successfully")
+            completion_type = "Image generation" if runner.mode == "image" else "Text completion"
+            logging.info(f"{completion_type} completed successfully")
             logging.info(f"Check output directory: {runner.output_dir}")
         else:
-            logging.error("Image generation failed")
+            completion_type = "Image generation" if runner.mode == "image" else "Text completion"
+            logging.error(f"{completion_type} failed")
             sys.exit(1)
             
     except KeyboardInterrupt:
